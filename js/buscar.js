@@ -140,11 +140,11 @@ async function _loadDetalle(id, codigo) {
 
   // Resumen de derivaciones
   const derivs = movs.filter(m => m.tipo === 'DERIVACION' || m.tipo === 'DERIVACION_EXT');
-  const resps  = movs.filter(m => m.tipo === 'RESPUESTA');
+  const respsx  = movs.filter(m => m.tipo === 'RESPUESTA');
   const derivRes = derivs.map(d => ({
     area: d.a_sig ? `[${d.a_sig}] ${d.a_nom}` : (d.area_libre || '—'),
     fecha: d.fecha,
-    respondido: resps.some(r => r.id > d.id)
+    respondido: respsx.some(r => r.id > d.id)
   }));
 
   el('det-content').innerHTML = `
