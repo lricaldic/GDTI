@@ -45,7 +45,9 @@ export function iniciarApp() {
     CU = m.CU;
     setCUState(m.CU);
     _setupUI(m.CU);
-    goPg('dash');
+    // Página inicial según rol
+    const paginaInicio = m.CU.rol === 'visualizador' ? 'buscar' : 'dash';
+    goPg(paginaInicio);
   });
 }
 

@@ -21,6 +21,9 @@ export function abrirMov(expId, codigo, fechaIngreso) {
 }
 
 function _renderModalMov(expId, codigo, fechaIngreso) {
+  if (el('mov-emis-areas-list')) el('mov-emis-areas-list').innerHTML = '';
+  emisDerivCounter = 0;
+  const rdEmis = el('emis-rd-interna'); if (rdEmis) rdEmis.checked = true;
   recibDerivCounter = 0;
 
   el('modal-mov-content').innerHTML = `
@@ -36,7 +39,7 @@ function _renderModalMov(expId, codigo, fechaIngreso) {
         <select id="mov-tipo" onchange="window._updMovUI()">
           <option value="">— Seleccionar —</option>
           <option value="RECIBIDO">Documento recibido (continuación / respuesta)</option>
-          <option value="REVISION">Revisión de informe GDTI</option>
+          <option value="EMISION">Emisión de documento GDTI</option>
           <option value="OBS">Observación / Nota interna</option>
         </select>
       </div>
@@ -127,34 +130,70 @@ function _renderModalMov(expId, codigo, fechaIngreso) {
       </div>
     </div>
 
-    <!-- PANEL SIMPLE -->
-    <div id="panel-simple">
+    <!-- PANEL EMISIÓN DE DOCUMENTO GDTI -->
+    <div id="panel-emision" style="display:none">
+      <div class="divider" style="margin:14px 0 16px"></div>
+      <div class="sec-hdr">Datos del documento emitido</div>
+      <div class="fgrid">
+        <div class="fg2 full">
+          <label>Cabecera del documento <span class="req">*</span></label>
+          <input id="mov-emis-cab" placeholder="Ej: INFORME N°015-2026-GDTI  |  CARTA N°045-2026-GDTI"
+            oninput="this.value=this.value.toUpperCase()">
+        </div>
+        <div class="fg2">
+          <label>Fecha <span class="req">*</span></label>
+          <input type="date" id="mov-emis-fecha" value="${today()}">
+        </div>
+        <div class="fg2">
+          <label>Folios <span style="color:var(--text3);font-weight:400">(opcional)</span></label>
+          <input type="number" id="mov-emis-folios" min="1" placeholder="Nro. de folios">
+        </div>
+        <div class="fg2 full">
+          <label>Asunto <span style="color:var(--text3);font-weight:400">(opcional)</span></label>
+          <textarea id="mov-emis-asunto" placeholder="Solo si difiere del expediente original..." style="min-height:52px"></textarea>
+        </div>
+      </div>
+      <div class="divider" style="margin:14px 0"></div>
+      <div class="sec-hdr">Derivación del documento emitido</div>
+      <div style="display:flex;gap:18px;margin-bottom:12px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.875rem;font-weight:600;color:var(--navy)">
+          <input type="radio" name="emis-deriv-tipo" id="emis-rd-interna" value="interna"
+            onchange="window._updEmisDerivUI()" checked>Derivación interna (subárea GDTI)
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.875rem;font-weight:600;color:var(--navy)">
+          <input type="radio" name="emis-deriv-tipo" id="emis-rd-externa" value="externa"
+            onchange="window._updEmisDerivUI()">Derivación externa (GM, Alcaldía, etc.)
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.875rem;font-weight:600;color:var(--navy)">
+          <input type="radio" name="emis-deriv-tipo" id="emis-rd-ninguna" value="ninguna"
+            onchange="window._updEmisDerivUI()">Sin derivación
+        </label>
+      </div>
+      <!-- Derivación interna -->
+      <div id="emis-panel-interna">
+        <div id="mov-emis-areas-list"></div>
+        <button class="btn btn-gold btn-xs" style="margin-top:6px"
+          onclick="window._addEmisDerivRow()">+ Agregar área</button>
+      </div>
+      <!-- Derivación externa -->
+      <div id="emis-panel-externa" style="display:none" class="fgrid">
+        <div class="fg2">
+          <label>Área / Institución destino <span class="req">*</span></label>
+          <select id="mov-emis-area-ext"><option value="">— Seleccionar —</option></select>
+        </div>
+        <div class="fg2">
+          <label>Fecha de derivación <span class="req">*</span></label>
+          <input type="date" id="mov-emis-fecha-ext" value="${today()}">
+        </div>
+      </div>
+    </div>
+
+    <!-- PANEL OBSERVACIÓN -->
+    <div id="panel-obs" style="display:none">
       <div class="fgrid" style="margin-top:14px">
         <div class="fg2">
           <label>Fecha <span class="req">*</span></label>
-          <input type="date" id="mov-fecha" value="${today()}">
-        </div>
-        <div class="fg2" id="mov-area-wrap">
-          <label id="mov-area-lbl">Área destino</label>
-          <select id="mov-area"><option value="">— Seleccionar —</option></select>
-        </div>
-        <div class="fg2 full" id="mov-cab-wrap">
-          <label id="mov-cab-lbl">Cabecera del documento</label>
-          <input id="mov-cab" oninput="this.value=this.value.toUpperCase()">
-          <div class="hint" id="mov-cab-hint"></div>
-        </div>
-        <div class="fg2" id="mov-resp-wrap">
-          <label>Responsable / A cargo</label>
-          <input id="mov-resp" placeholder="Nombre" oninput="this.value=this.value.toUpperCase()">
-        </div>
-        <div class="fg2" id="mov-medio-wrap" style="display:none">
-          <label>Medio de notificación</label>
-          <select id="mov-medio">
-            <option value="">— Seleccionar —</option>
-            <option>Carta notificada</option><option>Oficio</option>
-            <option>Notificación presencial</option><option>Correo electrónico</option>
-            <option>Notificación electrónica</option><option>Otro</option>
-          </select>
+          <input type="date" id="mov-obs-fecha" value="${today()}">
         </div>
       </div>
     </div>
@@ -217,11 +256,64 @@ function _renderModalMov(expId, codigo, fechaIngreso) {
 function _updMovUI() {
   const t = v('mov-tipo');
   showB('panel-recibido', t === 'RECIBIDO');
-  showB('panel-simple',   t === 'REVISION' || t === 'OBS');
-  showB('mov-area-wrap',  false);
-  showB('mov-cab-wrap',   false);
-  showB('mov-medio-wrap', false);
-  showB('mov-resp-wrap',  t === 'REVISION');
+  showB('panel-emision',  t === 'EMISION');
+  showB('panel-obs',      t === 'OBS');
+  if (t === 'EMISION') {
+    _updEmisDerivUI();
+    fillAreaSelect('mov-emis-area-ext');
+    if (el('mov-emis-areas-list') && !el('mov-emis-areas-list').children.length) _addEmisDerivRow();
+  }
+}
+
+function _updEmisDerivUI() {
+  const tipo = document.querySelector('input[name="emis-deriv-tipo"]:checked')?.value || 'interna';
+  showB('emis-panel-interna', tipo === 'interna');
+  showB('emis-panel-externa', tipo === 'externa');
+  if (tipo === 'interna' && el('mov-emis-areas-list') && !el('mov-emis-areas-list').children.length) {
+    _addEmisDerivRow();
+  }
+}
+
+let emisDerivCounter = 0;
+function _addEmisDerivRow(areaId='', fecha='') {
+  emisDerivCounter++;
+  const id = `edrv-${emisDerivCounter}`;
+  const areas = _areas.filter(a => SIGLAS_DERIV.includes(a.sigla));
+  let opts = `<option value="">— Área —</option>`;
+  areas.forEach(a => opts += `<option value="${a.id}" ${String(a.id)===String(areaId)?'selected':''}>[${esc(a.sigla)}] ${esc(a.nombre)}</option>`);
+  opts += `<option value="OTRO">OTRO (especificar)</option>`;
+  const div = document.createElement('div');
+  div.className = 'deriv-item'; div.id = id;
+  div.innerHTML = `
+    <select style="flex:2" onchange="window._updEmisOtro('${id}')">${opts}</select>
+    <input type="date" value="${fecha||today()}" style="flex:1;min-width:110px">
+    <button class="deriv-remove" onclick="document.getElementById('${id}').remove()">×</button>
+    <input type="text" id="${id}-otro" placeholder="Siglas" maxlength="20"
+      oninput="this.value=this.value.toUpperCase()"
+      style="display:none;flex:1 1 100%;margin-top:6px;padding:6px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:.82rem;background:#fff;outline:none">`;
+  el('mov-emis-areas-list').appendChild(div);
+}
+function _updEmisOtro(id) {
+  const sel = el(id)?.querySelector('select');
+  const inp = el(`${id}-otro`);
+  if (inp) inp.style.display = sel?.value === 'OTRO' ? '' : 'none';
+}
+function _getEmisDerivs() {
+  const items = el('mov-emis-areas-list')?.querySelectorAll('.deriv-item') || [];
+  const result = [];
+  items.forEach(item => {
+    const sel   = item.querySelector('select');
+    const date  = item.querySelector('input[type=date]');
+    const libre = item.querySelector('input[type=text]');
+    if (!sel?.value) return;
+    if (sel.value === 'OTRO') {
+      const txt = libre?.value?.trim().toUpperCase();
+      if (txt) result.push({ areaId:null, areaLibre:txt, fecha:date?.value||today() });
+    } else {
+      result.push({ areaId:parseInt(sel.value), areaLibre:null, fecha:date?.value||today() });
+    }
+  });
+  return result;
 }
 function _updRecibOrigenUI() {
   showB('mov-recib-otro-wrap', v('mov-recib-origen') === 'OTRO');
@@ -298,6 +390,9 @@ function _getRecibDerivs() {
 
 // Exponer al HTML
 window._updMovUI          = _updMovUI;
+window._updEmisDerivUI    = _updEmisDerivUI;
+window._addEmisDerivRow   = _addEmisDerivRow;
+window._updEmisOtro       = _updEmisOtro;
 window._updRecibOrigenUI  = _updRecibOrigenUI;
 window._updRecibDerivUI   = _updRecibDerivUI;
 window._onRecibRespChange = _onRecibRespChange;
@@ -374,19 +469,49 @@ export async function guardarMovimiento() {
       }
       audit('MOVIMIENTO', `RECIBIDO: ${cab}`, 'movimientos', expId, codigo);
 
-    } else {
-      const fecha = v('mov-fecha');
+    } else if (tipo === 'EMISION') {
+      const cab    = v('mov-emis-cab').trim().toUpperCase();
+      const fecha  = v('mov-emis-fecha');
+      const folios = parseInt(v('mov-emis-folios')) || null;
+      const asunto = v('mov-emis-asunto').trim() || null;
+      const tipoD  = document.querySelector('input[name="emis-deriv-tipo"]:checked')?.value || 'interna';
+      const derivs = tipoD === 'interna' ? _getEmisDerivs() : [];
+      const areaExtId = tipoD === 'externa' ? v('mov-emis-area-ext') || null : null;
+      const fechaExt  = tipoD === 'externa' ? v('mov-emis-fecha-ext') || fecha : fecha;
+
+      if (!cab)   { alert('La cabecera del documento es obligatoria'); return; }
       if (!fecha) { alert('La fecha es obligatoria'); return; }
+      if (tipoD === 'interna' && !derivs.length) { alert('Agrega al menos un área de derivación interna'); return; }
+      if (tipoD === 'externa' && !areaExtId)      { alert('Selecciona el área o institución de destino'); return; }
+
+      const movObs = `Documento emitido.${folios?' Folios: '+folios:''}${asunto?'. '+asunto:''}${obs?'\n'+obs:''}`;
       const ok = await runAsync(
-        `INSERT INTO movimientos(expediente_id,tipo,fecha,area_id,cabecera,responsable,medio,observaciones,usuario) VALUES(?,?,?,?,?,?,?,?,?)`,
-        [expId, tipo, fecha,
-         v('mov-area') || null,
-         v('mov-cab').trim() || null,
-         v('mov-resp').trim() || null,
-         v('mov-medio') || null,
-         obs, getCU().username]);
+        `INSERT INTO movimientos(expediente_id,tipo,fecha,cabecera,observaciones,usuario) VALUES(?,?,?,?,?,?)`,
+        [expId,'INFORME',fecha,cab,movObs,getCU().username]);
       if (!ok) { alert('Error al guardar. Intenta de nuevo.'); return; }
-      audit('MOVIMIENTO', `${tipo}${v('mov-cab')?' — '+v('mov-cab'):''}`, 'movimientos', expId, codigo);
+
+      if (tipoD === 'interna') {
+        for (const d of derivs) {
+          await runAsync(
+            `INSERT INTO movimientos(expediente_id,tipo,fecha,area_id,area_libre,observaciones,usuario) VALUES(?,?,?,?,?,?,?)`,
+            [expId,'DERIVACION',d.fecha,d.areaId||null,d.areaLibre||null,`Derivación de ${cab}`,getCU().username]);
+        }
+      } else if (tipoD === 'externa' && areaExtId) {
+        await runAsync(
+          `INSERT INTO movimientos(expediente_id,tipo,fecha,area_id,observaciones,usuario) VALUES(?,?,?,?,?,?)`,
+          [expId,'DERIVACION_EXT',fechaExt,areaExtId,`Derivación externa de ${cab}`,getCU().username]);
+      }
+      audit('MOVIMIENTO', `EMISION: ${cab}`, 'movimientos', expId, codigo);
+
+    } else if (tipo === 'OBS') {
+      const fecha = v('mov-obs-fecha');
+      if (!fecha) { alert('La fecha es obligatoria'); return; }
+      if (!obs)   { alert('Escribe una observación'); return; }
+      const ok = await runAsync(
+        `INSERT INTO movimientos(expediente_id,tipo,fecha,observaciones,usuario) VALUES(?,?,?,?,?)`,
+        [expId,'OBS',fecha,obs,getCU().username]);
+      if (!ok) { alert('Error al guardar. Intenta de nuevo.'); return; }
+      audit('MOVIMIENTO', `OBS: ${obs.substring(0,50)}`, 'movimientos', expId, codigo);
     }
 
     if (vincCheck && vincId) {
