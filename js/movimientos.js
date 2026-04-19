@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════
 // movimientos.js — Registro de movimientos
 // ═══════════════════════════════════════════
-import { q, q1, run, _areas, _responsables, reloadCache } from './db.js';
+import { q, q1, run, runAsync, _areas, _responsables, reloadCache } from './db.js';
 import { el, v, sv, showB, esc, today,
          fillAreaSelect, fillResp, onRespChange,
          abrir, cerrar, SIGLAS_DERIV }                      from './ui.js';
@@ -35,20 +35,9 @@ function _renderModalMov(expId, codigo, fechaIngreso) {
         <label>Tipo de movimiento <span class="req">*</span></label>
         <select id="mov-tipo" onchange="window._updMovUI()">
           <option value="">— Seleccionar —</option>
-          <optgroup label="── Documentos recibidos ──">
-            <option value="RECIBIDO">Documento recibido (continuación / respuesta)</option>
-            <option value="RESPUESTA">Respuesta recibida simple (solo cabecera)</option>
-          </optgroup>
-          <optgroup label="── Derivaciones y salidas ──">
-            <option value="DERIVACION">Derivación a subárea GDTI (con proveído)</option>
-            <option value="DERIVACION_EXT">Derivación externa (GM, Alcaldía, etc.)</option>
-            <option value="SALIDA">Salida / Notificación al administrado</option>
-            <option value="INFORME">Emisión de informe GDTI</option>
-          </optgroup>
-          <optgroup label="── Interno ──">
-            <option value="REVISION">Revisión interna / Entrega a responsable</option>
-            <option value="OBS">Observación / Nota interna</option>
-          </optgroup>
+          <option value="RECIBIDO">Documento recibido (continuación / respuesta)</option>
+          <option value="REVISION">Revisión de informe GDTI</option>
+          <option value="OBS">Observación / Nota interna</option>
         </select>
       </div>
     </div>
@@ -228,25 +217,11 @@ function _renderModalMov(expId, codigo, fechaIngreso) {
 function _updMovUI() {
   const t = v('mov-tipo');
   showB('panel-recibido', t === 'RECIBIDO');
-  showB('panel-simple',   t !== 'RECIBIDO' && t !== '');
-  if (t === 'RECIBIDO' || t === '') return;
-
-  const showArea = ['DERIVACION','DERIVACION_EXT','RESPUESTA','SALIDA','INFORME'].includes(t);
-  const showCab  = ['RESPUESTA','SALIDA','INFORME','DERIVACION_EXT','DERIVACION'].includes(t);
-  showB('mov-area-wrap',  showArea);
-  showB('mov-cab-wrap',   showCab);
-  showB('mov-medio-wrap', t === 'SALIDA');
-  showB('mov-resp-wrap',  true);
-
-  const aL = { DERIVACION:'Área destino (subárea GDTI)', DERIVACION_EXT:'Área / Institución destino',
-    RESPUESTA:'Área que responde', SALIDA:'Destinatario final', INFORME:'Dirigido a' };
-  const cL = { RESPUESTA:'Cabecera del doc. de respuesta', SALIDA:'Cabecera del doc. de salida',
-    INFORME:'Cabecera del informe', DERIVACION_EXT:'Cabecera del doc. de derivación', DERIVACION:'N° Proveído (opcional)' };
-  const cH = { RESPUESTA:'Ej: INFORME N°203-2026-SGI-GDTI/MPA',
-    INFORME:'Ej: INFORME N°015-2026-GDTI', SALIDA:'Ej: CARTA N°045-2026-GDTI' };
-  if (el('mov-area-lbl'))  el('mov-area-lbl').textContent  = aL[t] || 'Área';
-  if (el('mov-cab-lbl'))   el('mov-cab-lbl').textContent   = cL[t] || 'Cabecera del documento';
-  if (el('mov-cab-hint'))  el('mov-cab-hint').textContent  = cH[t] || '';
+  showB('panel-simple',   t === 'REVISION' || t === 'OBS');
+  showB('mov-area-wrap',  false);
+  showB('mov-cab-wrap',   false);
+  showB('mov-medio-wrap', false);
+  showB('mov-resp-wrap',  t === 'REVISION');
 }
 function _updRecibOrigenUI() {
   showB('mov-recib-otro-wrap', v('mov-recib-origen') === 'OTRO');
@@ -334,7 +309,7 @@ window._updRecibOtro      = _updRecibOtro;
 // ═══════════════════════════════════════════
 // GUARDAR MOVIMIENTO
 // ═══════════════════════════════════════════
-export function guardarMovimiento() {
+export async function guardarMovimiento() {
   const expId  = parseInt(v('mov-exp-id'));
   const codigo = v('mov-exp-codigo');
   const tipo   = v('mov-tipo');
@@ -347,76 +322,88 @@ export function guardarMovimiento() {
   const vincNota   = v('mov-vinc-nota').trim() || null;
   if (vincCheck && !vincId) { alert('Busca y selecciona el expediente a vincular'); return; }
 
-  if (tipo === 'RECIBIDO') {
-    const cab      = v('mov-recib-cab').trim().toUpperCase();
-    const fecha    = v('mov-recib-fecha');
-    const folios   = parseInt(v('mov-recib-folios')) || null;
-    const asunto   = v('mov-recib-asunto').trim() || null;
-    const origen   = v('mov-recib-origen');
-    const nreg     = v('mov-recib-nreg').trim().toUpperCase() || null;
-    const otroDesc = v('mov-recib-otro').trim().toUpperCase() || null;
-    const expFecha = v('mov-exp-fecha');
-    const tipoD    = document.querySelector('input[name="recib-deriv-tipo"]:checked')?.value || 'responsable';
-    const respId   = tipoD==='responsable' ? v('mov-recib-resp') || null : null;
-    const respOtros = tipoD==='responsable' ? v('mov-recib-resp-otros').trim().toUpperCase() || null : null;
-    const fechaDeriv = v('mov-recib-fecha-deriv') || fecha;
-    const derivs   = tipoD==='area' ? _getRecibDerivs() : [];
+  // Deshabilitar botón durante el guardado
+  const btnG = document.querySelector('#ov-mov .btn-primary');
+  if (btnG) { btnG.disabled = true; btnG.textContent = 'Guardando...'; }
 
-    // Validaciones
-    if (!cab)    { alert('La cabecera es obligatoria'); return; }
-    if (!fecha)  { alert('La fecha de recepción es obligatoria'); return; }
-    if (!folios || folios < 1) { alert('Los folios son obligatorios'); return; }
-    if (!origen) { alert('Selecciona el origen del documento'); return; }
-    if (origen === 'OTRO' && !otroDesc) { alert('Especifica el origen'); return; }
-    if (expFecha && fecha < expFecha) { alert('La fecha de recepción no puede ser anterior a la fecha de ingreso del expediente'); return; }
-    if (tipoD === 'responsable' && !respId) { alert('Selecciona el responsable'); return; }
-    if (tipoD === 'area' && !derivs.length)  { alert('Agrega al menos un área de derivación'); return; }
+  try {
+    if (tipo === 'RECIBIDO') {
+      const cab      = v('mov-recib-cab').trim().toUpperCase();
+      const fecha    = v('mov-recib-fecha');
+      const folios   = parseInt(v('mov-recib-folios')) || null;
+      const asunto   = v('mov-recib-asunto').trim() || null;
+      const origen   = v('mov-recib-origen');
+      const nreg     = v('mov-recib-nreg').trim().toUpperCase() || null;
+      const otroDesc = v('mov-recib-otro').trim().toUpperCase() || null;
+      const expFecha = v('mov-exp-fecha');
+      const tipoD    = document.querySelector('input[name="recib-deriv-tipo"]:checked')?.value || 'responsable';
+      const respId   = tipoD==='responsable' ? v('mov-recib-resp') || null : null;
+      const respOtros = tipoD==='responsable' ? v('mov-recib-resp-otros').trim().toUpperCase() || null : null;
+      const fechaDeriv = v('mov-recib-fecha-deriv') || fecha;
+      const derivs   = tipoD==='area' ? _getRecibDerivs() : [];
 
-    const origenLbl = origen === 'OTRO' ? otroDesc : origen;
-    const movObs = `Doc. recibido de ${origenLbl}${nreg?` (Ref: ${nreg})`:''}.`
-                 + ` Folios: ${folios}${asunto?'. '+asunto:''}`
-                 + `${obs?'\n'+obs:''}`;
+      if (!cab)    { alert('La cabecera es obligatoria'); return; }
+      if (!fecha)  { alert('La fecha de recepción es obligatoria'); return; }
+      if (!folios || folios < 1) { alert('Los folios son obligatorios'); return; }
+      if (!origen) { alert('Selecciona el origen del documento'); return; }
+      if (origen === 'OTRO' && !otroDesc) { alert('Especifica el origen'); return; }
+      if (expFecha && fecha < expFecha) { alert('La fecha de recepción no puede ser anterior a la fecha de ingreso del expediente'); return; }
+      if (tipoD === 'responsable' && !respId) { alert('Selecciona el responsable'); return; }
+      if (tipoD === 'area' && !derivs.length) { alert('Agrega al menos un área de derivación'); return; }
 
-    run(`INSERT INTO movimientos(expediente_id,tipo,fecha,cabecera,observaciones,usuario)
-         VALUES(?,?,?,?,?,?)`, [expId,'RESPUESTA',fecha,cab,movObs,getCU().username]);
+      const origenLbl = origen === 'OTRO' ? otroDesc : origen;
+      const movObs = `Doc. recibido de ${origenLbl}${nreg?` (Ref: ${nreg})`:''}.`
+                   + ` Folios: ${folios}${asunto?'. '+asunto:''}`
+                   + `${obs?'\n'+obs:''}`;
 
-    if (tipoD === 'responsable' && respId) {
-      const rn = _responsables.find(r => r.id == respId)?.nombre || '';
-      run(`INSERT INTO movimientos(expediente_id,tipo,fecha,responsable,observaciones,usuario)
-           VALUES(?,?,?,?,?,?)`,
-        [expId,'REVISION',fechaDeriv, rn+(respOtros?` (${respOtros})`:''),`Entregado a: ${rn}`,getCU().username]);
+      const ok = await runAsync(
+        `INSERT INTO movimientos(expediente_id,tipo,fecha,cabecera,observaciones,usuario) VALUES(?,?,?,?,?,?)`,
+        [expId,'RESPUESTA',fecha,cab,movObs,getCU().username]);
+      if (!ok) { alert('Error al guardar. Intenta de nuevo.'); return; }
+
+      if (tipoD === 'responsable' && respId) {
+        const rn = _responsables.find(r => r.id == respId)?.nombre || '';
+        await runAsync(
+          `INSERT INTO movimientos(expediente_id,tipo,fecha,responsable,observaciones,usuario) VALUES(?,?,?,?,?,?)`,
+          [expId,'REVISION',fechaDeriv, rn+(respOtros?` (${respOtros})`:''),`Entregado a: ${rn}`,getCU().username]);
+      }
+      for (const d of derivs) {
+        await runAsync(
+          `INSERT INTO movimientos(expediente_id,tipo,fecha,area_id,area_libre,usuario) VALUES(?,?,?,?,?,?)`,
+          [expId,'DERIVACION',d.fecha,d.areaId||null,d.areaLibre||null,getCU().username]);
+      }
+      audit('MOVIMIENTO', `RECIBIDO: ${cab}`, 'movimientos', expId, codigo);
+
+    } else {
+      const fecha = v('mov-fecha');
+      if (!fecha) { alert('La fecha es obligatoria'); return; }
+      const ok = await runAsync(
+        `INSERT INTO movimientos(expediente_id,tipo,fecha,area_id,cabecera,responsable,medio,observaciones,usuario) VALUES(?,?,?,?,?,?,?,?,?)`,
+        [expId, tipo, fecha,
+         v('mov-area') || null,
+         v('mov-cab').trim() || null,
+         v('mov-resp').trim() || null,
+         v('mov-medio') || null,
+         obs, getCU().username]);
+      if (!ok) { alert('Error al guardar. Intenta de nuevo.'); return; }
+      audit('MOVIMIENTO', `${tipo}${v('mov-cab')?' — '+v('mov-cab'):''}`, 'movimientos', expId, codigo);
     }
-    derivs.forEach(d =>
-      run(`INSERT INTO movimientos(expediente_id,tipo,fecha,area_id,area_libre,usuario)
-           VALUES(?,?,?,?,?,?)`,
-        [expId,'DERIVACION',d.fecha,d.areaId||null,d.areaLibre||null,getCU().username])
-    );
-    audit('MOVIMIENTO', `RECIBIDO: ${cab}`, 'movimientos', expId, codigo);
 
-  } else {
-    const fecha  = v('mov-fecha');
-    if (!fecha) { alert('La fecha es obligatoria'); return; }
-    run(`INSERT INTO movimientos(expediente_id,tipo,fecha,area_id,cabecera,responsable,medio,observaciones,usuario)
-         VALUES(?,?,?,?,?,?,?,?,?)`,
-      [expId, tipo, fecha,
-       v('mov-area') || null,
-       v('mov-cab').trim() || null,
-       v('mov-resp').trim() || null,
-       v('mov-medio') || null,
-       obs, getCU().username]);
-    audit('MOVIMIENTO', `${tipo}${v('mov-cab')?' — '+v('mov-cab'):''}`, 'movimientos', expId, codigo);
+    if (vincCheck && vincId) {
+      await runAsync(
+        `INSERT INTO vinculos(exp_origen,exp_destino,tipo,nota,creado_por) VALUES(?,?,?,?,?)`,
+        [expId, parseInt(vincId), vincTipo, vincNota, getCU().username]);
+    }
+
+    cerrar('ov-mov');
+    await reloadCache();
+    const { buscar } = await import('./buscar.js');
+    buscar();
+
+  } finally {
+    if (btnG) { btnG.disabled = false; btnG.textContent = 'Guardar movimiento'; }
   }
-
-  // Guardar vínculo si aplica
-  if (vincCheck && vincId) {
-    run(`INSERT INTO vinculos(exp_origen,exp_destino,tipo,nota,creado_por)
-         VALUES(?,?,?,?,?)`,
-      [expId, parseInt(vincId), vincTipo, vincNota, getCU().username]);
-  }
-
-  cerrar('ov-mov');
-  buscar();
 }
 
-window.abrirMov        = abrirMov;
+window.abrirMov          = abrirMov;
 window.guardarMovimiento = guardarMovimiento;

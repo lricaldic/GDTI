@@ -49,6 +49,7 @@ export async function buscar() {
   }
 
   const canEdit = getCU()?.rol !== 'visualizador';
+  const isAdmin = getCU()?.rol === 'admin';
 
   el('tabla-resultados').innerHTML = `
     <div class="tbl-wrap"><table>
@@ -73,13 +74,23 @@ export async function buscar() {
         <td>${bdgEstado(r.estado)}</td>
         <td>
           <div style="display:flex;gap:4px">
-            <button class="icon-btn" title="Ver historial" onclick="window.verDetalle(${r.id},'${esc(r.codigo)}')">👁</button>
+            <button class="icon-btn" title="Ver historial"
+              onclick="window.verDetalle(${r.id},'${esc(r.codigo)}')">👁</button>
             ${canEdit ? `
-              <button class="icon-btn" title="Nuevo movimiento" onclick="window.abrirMov(${r.id},'${esc(r.codigo)}','${esc(r.fecha_ingreso)}')">📋</button>
-              <button class="icon-btn" title="Editar datos" onclick="window.abrirEditar(${r.id})">✏️</button>
-              <button class="icon-btn" title="Cambiar estado" onclick="window.abrirEstado(${r.id},'${esc(r.estado)}')">🔄</button>
+              <button class="icon-btn" title="Nuevo movimiento"
+                onclick="window.abrirMov(${r.id},'${esc(r.codigo)}','${esc(r.fecha_ingreso)}')">📋</button>
+              <button class="icon-btn" title="Cambiar estado"
+                onclick="window.abrirEstado(${r.id},'${esc(r.estado)}')">🔄</button>
             ` : ''}
-            <button class="icon-btn" title="Imprimir historial" onclick="window.imprimirExpediente(${r.id},'${esc(r.codigo)}')">🖨️</button>
+            ${isAdmin ? `
+              <button class="icon-btn" title="Editar datos"
+                onclick="window.abrirEditar(${r.id})">✏️</button>
+              <button class="icon-btn" title="Eliminar expediente"
+                onclick="window.eliminarExpediente(${r.id},'${esc(r.codigo)}')"
+                style="color:var(--red)">🗑️</button>
+            ` : ''}
+            <button class="icon-btn" title="Imprimir historial"
+              onclick="window.imprimirExpediente(${r.id},'${esc(r.codigo)}')">🖨️</button>
           </div>
         </td>
       </tr>`).join('')}
@@ -139,12 +150,12 @@ async function _loadDetalle(id, codigo) {
   if (e.adj_usb   > 0) adjs.push(`${e.adj_usb} USB`);
 
   // Resumen de derivaciones
-  const derivs = movs.filter(m => m.tipo === 'DERIVACION' || m.tipo === 'DERIVACION_EXT');
-  const respsx  = movs.filter(m => m.tipo === 'RESPUESTA');
+  const derivs        = movs.filter(m => m.tipo === 'DERIVACION' || m.tipo === 'DERIVACION_EXT');
+  const movRespuestas = movs.filter(m => m.tipo === 'RESPUESTA');
   const derivRes = derivs.map(d => ({
     area: d.a_sig ? `[${d.a_sig}] ${d.a_nom}` : (d.area_libre || '—'),
     fecha: d.fecha,
-    respondido: respsx.some(r => r.id > d.id)
+    respondido: movRespuestas.some(r => r.id > d.id)
   }));
 
   el('det-content').innerHTML = `
@@ -227,3 +238,23 @@ async function _loadDetalle(id, codigo) {
     : `<div class="empty" style="padding:24px"><p>Sin movimientos registrados</p></div>`}
   `;
 }
+
+// ─── Eliminar expediente (solo admin) ─────
+export async function eliminarExpediente(id, codigo) {
+  if (getCU()?.rol !== 'admin') { alert('Solo el administrador puede eliminar expedientes'); return; }
+  const conf = confirm(`¿Eliminar el expediente ${codigo}?\n\nEsta acción no se puede deshacer. Se eliminarán también todos sus movimientos y vínculos.`);
+  if (!conf) return;
+
+  const { getSB, reloadCache } = await import('./db.js');
+  const { audit } = await import('./auditoria.js');
+  const sb = getSB();
+
+  const { error } = await sb.from('expedientes').delete().eq('id', id);
+  if (error) { alert('Error al eliminar: ' + error.message); return; }
+
+  audit('ELIMINACIÓN', `Expediente eliminado: ${codigo}`, 'expedientes', id, codigo);
+  await reloadCache();
+  buscar();
+}
+
+window.eliminarExpediente = eliminarExpediente;

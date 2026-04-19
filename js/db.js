@@ -130,35 +130,37 @@ export async function q1Async(sql, params = []) {
 }
 
 /**
- * run() — escribe en Supabase Y actualiza cache local.
- * Síncrono en apariencia (no bloquea UI), async en background.
+ * run() — fire and forget. Para operaciones no críticas.
  */
 export function run(sql, params = []) {
   const tabla = _detectTable(sql);
-  _runAsync(sql, params, tabla); // fire and forget
+  _runAsync(sql, params, tabla);
   return true;
+}
+
+/**
+ * runAsync() — espera confirmación de Supabase.
+ * Usar en guardarExpediente, guardarMovimiento y otros guardados críticos.
+ */
+export async function runAsync(sql, params = []) {
+  const tabla = _detectTable(sql);
+  return await _runAsync(sql, params, tabla);
 }
 
 async function _runAsync(sql, params, tabla) {
   try {
-    const sqlFinal = _interpolate(sql, params);
     const isInsert = sql.trim().toUpperCase().startsWith('INSERT');
     const isUpdate = sql.trim().toUpperCase().startsWith('UPDATE');
-    const isDelete = sql.trim().toUpperCase().startsWith('DELETE');
 
     if (isInsert && tabla) {
-      // Parsear valores e insertar via Supabase nativo
       const obj = _parseInsert(sql, params);
       if (obj) {
         const { data, error } = await _sb.from(tabla).insert(obj).select().single();
-        if (!error && data) {
-          _lastInsertId = data.id;
-          _cache[tabla] = [...(_cache[tabla]||[]), data];
-          _updateExports();
-        } else if (error) {
-          console.error('[DB insert]', error.message);
-        }
-        return;
+        if (error) { console.error('[DB insert]', error.message); return false; }
+        _lastInsertId = data.id;
+        _cache[tabla] = [...(_cache[tabla]||[]), data];
+        _updateExports();
+        return true;
       }
     }
 
@@ -166,21 +168,21 @@ async function _runAsync(sql, params, tabla) {
       const { set, where } = _parseUpdate(sql, params);
       if (set && where) {
         const { error } = await _sb.from(tabla).update(set).match(where);
-        if (!error) {
-          await _loadTable(tabla);
-          _updateExports();
-        } else console.error('[DB update]', error.message);
-        return;
+        if (error) { console.error('[DB update]', error.message); return false; }
+        await _loadTable(tabla);
+        _updateExports();
+        return true;
       }
     }
 
     // Fallback: exec_sql para casos complejos
     const { data, error } = await _sb.rpc('exec_sql', { sql_query: _interpolate(sql, params) });
-    if (error) console.error('[DB run fallback]', error.message);
-    else if (tabla) { await _loadTable(tabla); _updateExports(); }
+    if (error) { console.error('[DB run fallback]', error.message); return false; }
+    if (tabla) { await _loadTable(tabla); _updateExports(); }
     if (data?.[0]?.id) _lastInsertId = data[0].id;
+    return true;
 
-  } catch(e) { console.error('[DB _runAsync]', e.message); }
+  } catch(e) { console.error('[DB _runAsync]', e.message); return false; }
 }
 
 export function lastId() { return _lastInsertId; }

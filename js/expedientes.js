@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════
 // expedientes.js — Nuevo expediente, edición, estado
 // ═══════════════════════════════════════════
-import { q, q1, run, lastId, reloadCache, _areas, _responsables } from './db.js';
+import { q, q1, run, runAsync, lastId, reloadCache, _areas, _responsables } from './db.js';
 import { el, v, sv, show, hide, showB, esc,
          today, anio, fmtCod, fillResp, onRespChange,
          showAlert, abrir, cerrar, SIGLAS_DERIV }          from './ui.js';
@@ -402,7 +402,7 @@ export function guardarExpediente() {
   if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
 
   try {
-    run(`INSERT INTO expedientes(
+    const ok = await runAsync(`INSERT INTO expedientes(
       anio,nro,codigo,origen,codigo_origen,origen_desc,gm_adjuntas,
       fecha_ingreso,cabecera,asunto,folios,
       adj_copia,adj_orig,adj_cd,adj_usb,
@@ -414,43 +414,53 @@ export function guardarExpediente() {
        adjCopia,adjOrig,adjCd,adjUsb,
        respId,respOtros,fechaResp,estado,getCU().username]);
 
+    if (!ok) { showAlert('al-nuevo-err', 'Error al guardar. Intenta de nuevo.', 'err'); return; }
+
     const newId = lastId();
 
-    // Movimiento inicial automático
+    // Movimiento inicial
     const movObs = `Expediente registrado. Origen: ${origen}${codreg ? '. Cód: ' + codreg : ''}`;
-    run(`INSERT INTO movimientos(expediente_id,tipo,fecha,observaciones,usuario)
+    await runAsync(`INSERT INTO movimientos(expediente_id,tipo,fecha,observaciones,usuario)
          VALUES(?,?,?,?,?)`, [newId,'OBS',fecha,movObs,getCU().username]);
 
     // Derivación inicial
     if (!archivado) {
       if (tipoD === 'responsable' && respId) {
         const rn = _responsables.find(r => r.id == respId)?.nombre || '';
-        run(`INSERT INTO movimientos(expediente_id,tipo,fecha,responsable,observaciones,usuario)
+        await runAsync(`INSERT INTO movimientos(expediente_id,tipo,fecha,responsable,observaciones,usuario)
              VALUES(?,?,?,?,?,?)`,
           [newId,'REVISION',fechaResp, rn+(respOtros?` (${respOtros})`:``), `Entregado a: ${rn}`, getCU().username]);
       }
-      derivs.forEach(d =>
-        run(`INSERT INTO movimientos(expediente_id,tipo,fecha,area_id,area_libre,usuario)
+      for (const d of derivs) {
+        await runAsync(`INSERT INTO movimientos(expediente_id,tipo,fecha,area_id,area_libre,usuario)
              VALUES(?,?,?,?,?,?)`,
-          [newId,'DERIVACION',d.fecha,d.areaId||null,d.areaLibre||null,getCU().username])
-      );
+          [newId,'DERIVACION',d.fecha,d.areaId||null,d.areaLibre||null,getCU().username]);
+      }
     }
 
     // Vínculo
     const vincCheck = el('n-vincular-check')?.checked;
     const vincId    = v('n-vinc-id');
     if (vincCheck && vincId) {
-      run(`INSERT INTO vinculos(exp_origen,exp_destino,tipo,nota,creado_por)
+      await runAsync(`INSERT INTO vinculos(exp_origen,exp_destino,tipo,nota,creado_por)
            VALUES(?,?,?,?,?)`,
         [newId, parseInt(vincId), v('n-vinc-tipo'), v('n-vinc-nota')||null, getCU().username]);
     }
 
     audit('NUEVO EXPEDIENTE', `${cab||'Sin cabecera'} — ${asunto.substring(0,60)}`,
           'expedientes', newId, codigo);
+
+    // Forzar recarga de cache y búsqueda para que aparezca inmediatamente
+    await reloadCache();
     showAlert('al-nuevo', `✓ Expediente ${codigo} registrado correctamente`);
     _resetFormNuevo();
     _autoGDTI();
+    // Recargar dashboard y búsqueda si están activos
+    const { loadDash } = await import('./dashboard.js');
     loadDash();
+    const { buscar } = await import('./buscar.js');
+    buscar();
+
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Guardar Expediente'; }
   }
