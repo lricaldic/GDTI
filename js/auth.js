@@ -28,9 +28,19 @@ export async function doLogin() {
     return;
   }
 
-  const user = q1(`SELECT * FROM usuarios WHERE username=? AND activo=1`, [username]);
+  // Login directo contra Supabase para garantizar datos frescos
+  const { getSB } = await import('./db.js');
+  const sb = getSB();
+  const { data: usuarios, error } = await sb
+    .from('usuarios')
+    .select('*')
+    .eq('username', username)
+    .eq('activo', true)
+    .limit(1);
 
-  if (!user) {
+  const user = usuarios?.[0] || null;
+
+  if (error || !user) {
     showLoginError('Usuario o contraseña incorrectos');
     return;
   }
@@ -43,8 +53,7 @@ export async function doLogin() {
       showLoginError(`Cuenta bloqueada. Intenta en ${minRestantes} minuto${minRestantes !== 1 ? 's' : ''}.`);
       return;
     } else {
-      // Desbloquear si ya pasó el tiempo
-      run(`UPDATE usuarios SET intentos=0, bloqueado_hasta=NULL WHERE id=?`, [user.id]);
+      await sb.from('usuarios').update({ intentos: 0, bloqueado_hasta: null }).eq('id', user.id);
     }
   }
 
@@ -53,10 +62,10 @@ export async function doLogin() {
     const nuevosIntentos = (user.intentos || 0) + 1;
     if (nuevosIntentos >= MAX_INTENTOS) {
       const bloqueadoHasta = new Date(Date.now() + BLOQUEO_MIN * 60000).toISOString();
-      run(`UPDATE usuarios SET intentos=?, bloqueado_hasta=? WHERE id=?`, [nuevosIntentos, bloqueadoHasta, user.id]);
+      await sb.from('usuarios').update({ intentos: nuevosIntentos, bloqueado_hasta: bloqueadoHasta }).eq('id', user.id);
       showLoginError(`Demasiados intentos fallidos. Cuenta bloqueada por ${BLOQUEO_MIN} minutos.`);
     } else {
-      run(`UPDATE usuarios SET intentos=? WHERE id=?`, [nuevosIntentos, user.id]);
+      await sb.from('usuarios').update({ intentos: nuevosIntentos }).eq('id', user.id);
       const restantes = MAX_INTENTOS - nuevosIntentos;
       showLoginError(`Usuario o contraseña incorrectos. ${restantes} intento${restantes !== 1 ? 's' : ''} restante${restantes !== 1 ? 's' : ''}.`);
     }
@@ -64,7 +73,7 @@ export async function doLogin() {
   }
 
   // Login exitoso — resetear intentos
-  run(`UPDATE usuarios SET intentos=0, bloqueado_hasta=NULL WHERE id=?`, [user.id]);
+  await sb.from('usuarios').update({ intentos: 0, bloqueado_hasta: null }).eq('id', user.id);
   CU = user;
   guardarSesion(user);
   audit('LOGIN', 'Inicio de sesión exitoso', 'usuarios', user.id, '');

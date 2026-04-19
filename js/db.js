@@ -215,11 +215,12 @@ function _filterRows(rows, sql, params) {
     result = result.filter(r => r.username === params[0]);
   }
 
-  // WHERE activo/activa = 1/true
-  if (sqlUp.includes('ACTIVO=1') || sqlUp.includes("ACTIVO = 1") || sqlUp.includes('ACTIVO=TRUE')) {
+  // WHERE activo/activa = 1/true — Supabase retorna booleanos
+  const sqlUp2 = sql.toUpperCase().replace(/\s+/g,'');
+  if (sqlUp2.includes('ACTIVO=1') || sqlUp2.includes('ACTIVO=TRUE')) {
     result = result.filter(r => r.activo === true || r.activo === 1);
   }
-  if (sqlUp.includes('ACTIVA=1') || sqlUp.includes('ACTIVA=TRUE')) {
+  if (sqlUp2.includes('ACTIVA=1') || sqlUp2.includes('ACTIVA=TRUE')) {
     result = result.filter(r => r.activa === true || r.activa === 1);
   }
 
@@ -249,10 +250,11 @@ function _filterRows(rows, sql, params) {
 }
 
 function _parseInsert(sql, params) {
-  // INSERT INTO tabla(col1,col2,...) VALUES(?,?,...)
-  const m = sql.match(/INSERT\s+INTO\s+\w+\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)/i);
+  // Normalizar espacios y saltos de línea
+  const normalized = sql.replace(/\s+/g, ' ').trim();
+  const m = normalized.match(/INSERT\s+INTO\s+(\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)/i);
   if (!m) return null;
-  const cols = m[1].split(',').map(c => c.trim());
+  const cols = m[2].split(',').map(c => c.trim());
   const obj  = {};
   cols.forEach((col, i) => {
     const val = params[i];
@@ -262,21 +264,16 @@ function _parseInsert(sql, params) {
 }
 
 function _parseUpdate(sql, params) {
-  // UPDATE tabla SET col=?,col=? WHERE id=?
-  const setMatch   = sql.match(/SET\s+(.+?)\s+WHERE/i);
-  const whereMatch = sql.match(/WHERE\s+(\w+)\s*=\s*\?/i);
+  const normalized = sql.replace(/\s+/g, ' ').trim();
+  const setMatch   = normalized.match(/SET\s+(.+?)\s+WHERE/i);
+  const whereMatch = normalized.match(/WHERE\s+(\w+)\s*=\s*\?/i);
   if (!setMatch || !whereMatch) return { set: null, where: null };
 
   const setCols  = setMatch[1].split(',').map(s => s.trim().split(/\s*=\s*/)[0].trim());
   const whereCol = whereMatch[1].trim();
   const set      = {};
-  const nParams  = setCols.length;
-
   setCols.forEach((col, i) => { set[col] = params[i] ?? null; });
-
-  const whereVal = params[nParams];
-  const where    = { [whereCol]: whereVal };
-
+  const where    = { [whereCol]: params[setCols.length] };
   return { set, where };
 }
 
