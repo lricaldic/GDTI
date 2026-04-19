@@ -119,12 +119,33 @@
       <!-- DASHBOARD -->
       <div class="pg on" id="pg-dash">
         <div class="ph"><h2>Dashboard</h2><p id="dash-fecha"></p></div>
-        <div class="stat-total">
-          <div class="icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
-          <div><div class="val" id="s-total">0</div><div class="lbl">Expedientes registrados</div></div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px">
+          <div class="card" style="padding:18px 20px;text-align:center">
+            <div style="font-size:.7rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Total</div>
+            <div style="font-family:'Playfair Display',serif;font-size:2.2rem;color:var(--navy)" id="s-total">0</div>
+            <div style="font-size:.75rem;color:var(--text3);margin-top:3px">registrados</div>
+          </div>
+          <div class="card" style="padding:18px 20px;text-align:center;border-top:3px solid #1e40af">
+            <div style="font-size:.7rem;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">En Trámite</div>
+            <div style="font-family:'Playfair Display',serif;font-size:2.2rem;color:#1e40af" id="s-tramite">0</div>
+            <div style="font-size:.75rem;color:var(--text3);margin-top:3px">activos</div>
+          </div>
+          <div class="card" style="padding:18px 20px;text-align:center;border-top:3px solid #065f46">
+            <div style="font-size:.7rem;font-weight:700;color:#065f46;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Respondidos</div>
+            <div style="font-family:'Playfair Display',serif;font-size:2.2rem;color:#065f46" id="s-respondido">0</div>
+            <div style="font-size:.75rem;color:var(--text3);margin-top:3px">completados</div>
+          </div>
+          <div class="card" style="padding:18px 20px;text-align:center;border-top:3px solid #92400e">
+            <div style="font-size:.7rem;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Arch./Cerrados</div>
+            <div style="font-family:'Playfair Display',serif;font-size:2.2rem;color:#92400e" id="s-archivado">0</div>
+            <div style="font-size:.75rem;color:var(--text3);margin-top:3px">finalizados</div>
+          </div>
         </div>
         <div class="card">
-          <div class="card-head"><h3>Últimos expedientes registrados</h3></div>
+          <div class="card-head">
+            <h3>Últimos expedientes registrados</h3>
+            <button class="btn btn-ghost btn-sm" onclick="window.goPg('buscar')">Ver todos →</button>
+          </div>
           <div id="dash-recent"></div>
         </div>
       </div>
