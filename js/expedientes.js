@@ -402,13 +402,13 @@ export function guardarExpediente() {
   if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
 
   try {
-    const ok = await runAsync(`INSERT INTO expedientes(
+    const ok = await runAsync("INSERT INTO expedientes(
       anio,nro,codigo,origen,codigo_origen,origen_desc,gm_adjuntas,
       fecha_ingreso,cabecera,asunto,folios,
       adj_copia,adj_orig,adj_cd,adj_usb,
       responsable_id,responsable_otros,fecha_entrega_resp,
       estado,registrado_por)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
       [yr,nro,codigo,origen,codreg||null,otroDesc||null,gmAdj||null,
        fecha,cab||null,asunto,folios,
        adjCopia,adjOrig,adjCd,adjUsb,
