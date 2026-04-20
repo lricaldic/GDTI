@@ -258,6 +258,11 @@ tr:hover td { background:rgba(27,45,69,.025); }
   .stats { grid-template-columns:1fr 1fr; }
   .content { padding:18px 14px; }
   .fgrid { grid-template-columns:1fr; }
-  .dgrid { grid-template-columns:1fr; }
+  .dgrid { grid-column:1fr; }
   .modal { padding:24px 18px 18px; }
 }
+
+/* ── TOAST NOTIFICATIONS ── */
+@keyframes toastIn  { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+@keyframes toastOut { from { opacity:1; transform:translateY(0); } to { opacity:0; transform:translateY(12px); } }
+
