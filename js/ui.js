@@ -59,14 +59,43 @@ export function origenLabel(o, desc = '', adj = '') {
   return esc(lbl);
 }
 
-// ─── Alertas ───
+// ─── Alertas ─────────────────────────────
+// showAlert con id: muestra alerta inline en el formulario (compatibilidad)
+// showToast sin id: muestra notificación fija en la esquina inferior
 export function showAlert(id, msg, tipo = 'ok', ms = 3500) {
-  const e = el(id);
-  if (!e) return;
-  e.textContent = msg;
-  e.className = `alert alert-${tipo}`;
-  e.style.display = 'block';
-  setTimeout(() => { e.style.display = 'none'; }, ms);
+  if (id) {
+    // Alerta inline (dentro del formulario)
+    const e = el(id);
+    if (!e) { showToast(msg, tipo, ms); return; }
+    e.textContent = msg;
+    e.className   = `alert alert-${tipo}`;
+    e.style.display = 'block';
+    setTimeout(() => { e.style.display = 'none'; }, ms);
+  } else {
+    showToast(msg, tipo, ms);
+  }
+}
+
+// Toast fijo abajo-derecha — para confirmaciones de guardado
+export function showToast(msg, tipo = 'ok', ms = 3500) {
+  // Reusar o crear el contenedor de toasts
+  let container = el('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    container.style.cssText =
+      'position:fixed;bottom:24px;right:24px;z-index:9000;display:flex;flex-direction:column;gap:8px;max-width:340px';
+    document.body.appendChild(container);
+  }
+  const toast = document.createElement('div');
+  toast.style.cssText =
+    `background:${tipo==='ok'?'#065f46':'#991b1b'};color:#fff;padding:12px 18px;border-radius:10px;`+
+    `font-size:.875rem;font-weight:500;box-shadow:0 4px 18px rgba(0,0,0,.25);`+
+    `animation:toastIn .25s ease;cursor:pointer;line-height:1.4`;
+  toast.textContent = msg;
+  toast.onclick = () => toast.remove();
+  container.appendChild(toast);
+  setTimeout(() => { toast.style.animation='toastOut .3s ease forwards'; setTimeout(()=>toast.remove(),300); }, ms);
 }
 
 // ─── Modales ───

@@ -4,7 +4,7 @@
 import { q, q1, run, runAsync, _areas, _responsables, reloadCache } from './db.js';
 import { el, v, sv, showB, esc, today,
          fillAreaSelect, fillResp, onRespChange,
-         abrir, cerrar, SIGLAS_DERIV }                      from './ui.js';
+         abrir, cerrar, showToast, SIGLAS_DERIV }             from './ui.js';
 import { getCU } from './state.js';
 import { audit } from './auditoria.js';
 import { buscar } from './buscar.js';
@@ -522,6 +522,7 @@ export async function guardarMovimiento() {
 
     cerrar('ov-mov');
     await reloadCache();
+    showToast('✓ Movimiento registrado correctamente');
     const { buscar } = await import('./buscar.js');
     buscar();
 

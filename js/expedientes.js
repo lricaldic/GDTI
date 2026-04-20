@@ -4,7 +4,7 @@
 import { q, q1, run, runAsync, lastId, reloadCache, _areas, _responsables } from './db.js';
 import { el, v, sv, show, hide, showB, esc,
          today, anio, fmtCod, fillResp, onRespChange,
-         showAlert, abrir, cerrar, SIGLAS_DERIV }          from './ui.js';
+         showAlert, showToast, abrir, cerrar, SIGLAS_DERIV }  from './ui.js';
 import { getCU } from './state.js';
 import { audit }                                            from './auditoria.js';
 import { buscar }                                           from './buscar.js';
@@ -452,7 +452,7 @@ export async function guardarExpediente() {
 
     // Forzar recarga de cache y búsqueda para que aparezca inmediatamente
     await reloadCache();
-    showAlert('al-nuevo', `✓ Expediente ${codigo} registrado correctamente`);
+    showToast(`✓ Expediente ${codigo} registrado correctamente`);
     _resetFormNuevo();
     _autoGDTI();
     // Recargar dashboard y búsqueda si están activos
