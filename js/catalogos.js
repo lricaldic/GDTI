@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════
 // catalogos.js — Usuarios, responsables, áreas
 // ═══════════════════════════════════════════
-import { q, q1, run, reloadCache, _responsables } from './db.js';
+import { q, q1, run, reloadCache, getAreas, getResponsables } from './db.js';
 import { el, v, sv, showB, esc, showAlert, abrir, cerrar } from './ui.js';
 import { sha256 } from './auth.js';
 import { audit } from './auditoria.js';
@@ -103,7 +103,7 @@ function _renderResponsables() {
   el('tabla-responsables').innerHTML = `
     <div class="tbl-wrap"><table>
       <thead><tr><th>Nombre</th><th>Cargo</th><th>Estado</th><th></th></tr></thead>
-      <tbody>${_responsables.map(r => `<tr>
+      <tbody>${getResponsables().map(r => `<tr>
         <td style="font-weight:600">${esc(r.nombre)}</td>
         <td style="font-size:.82rem;color:var(--text2)">${esc(r.cargo||'—')}</td>
         <td><span class="bdg" style="background:${r.activo?'#d1fae5':'#fee2e2'};color:${r.activo?'#065f46':'#991b1b'}">${r.activo?'Activo':'Inactivo'}</span></td>

@@ -134,13 +134,13 @@ window.addEventListener('resize', () => {
 });
 
 // ─── Fill selects con catálogos ───
-import { _areas, _responsables } from './db.js';
+import { _areas, getResponsables() } from './db.js';
 
 export function fillResp(selId, addEmpty = true) {
   const sel = el(selId);
   if (!sel) return;
   let html = addEmpty ? `<option value="">— Seleccionar —</option>` : '';
-  _responsables.forEach(r =>
+  getResponsables().forEach(r =>
     html += `<option value="${r.id}">${esc(r.nombre)}${r.cargo ? ' – ' + esc(r.cargo) : ''}</option>`
   );
   sel.innerHTML = html;
@@ -151,7 +151,7 @@ export function fillAreaSelect(selId) {
   if (!sel) return;
   let html = `<option value="">— Seleccionar —</option>`;
   let lastTipo = '';
-  _areas.forEach(a => {
+  getAreas().forEach(a => {
     if (a.tipo !== lastTipo) {
       const labels = { INTERNA:'── Internas GDTI ──', MUNICIPAL:'── Municipales ──', EXTERNA:'── Externas ──' };
       html += `<option disabled>${labels[a.tipo] || a.tipo}</option>`;

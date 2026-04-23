@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════
 // buscar.js — Lista unificada expedientes+movimientos
 // ═══════════════════════════════════════════
-import { q, q1 }                                     from './db.js';
+import { q, q1, getAreas, getResponsables } from './db.js';
 import { el, v, sv, esc, bdgEstado, fmtDate,
          origenLabel, tagMov, abrir, showB }          from './ui.js';
 import { getCU }                                      from './state.js';
@@ -31,7 +31,7 @@ export async function buscar() {
   const fCab  = v('f-cabecera').trim().toLowerCase();
 
   const dbMod    = await import('./db.js');
-  const areasCat = dbMod._areas;
+  const areasCat = dbMod.getAreas();
 
   // ── Expedientes del cache ──────────────────
   let exps = q(`SELECT * FROM expedientes ORDER BY id DESC`);
@@ -203,8 +203,8 @@ export function verHistorial(expId, codigo, movId) {
 
 async function _loadHistorial(expId, codigo, movId) {
   const dbMod    = await import('./db.js');
-  const areasCat = dbMod._areas;
-  const respsCat = dbMod._responsables;
+  const areasCat = getAreas();
+  const respsCat = getResponsables();
 
   const eRaw = q1(`SELECT * FROM expedientes WHERE id = ?`, [expId]);
   if (!eRaw) { el('det-content').innerHTML = '<p>Error al cargar</p>'; return; }

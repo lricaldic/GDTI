@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════
 // expedientes.js — Nuevo expediente, edición, estado
 // ═══════════════════════════════════════════
-import { q, q1, run, runAsync, lastId, reloadCache, _areas, _responsables } from './db.js';
+import { q, q1, run, runAsync, lastId, reloadCache,getAreas,getResponsables } from './db.js';
 import { el, v, sv, show, hide, showB, esc,
          today, anio, fmtCod, fillResp, onRespChange,
          showAlert, showToast, abrir, cerrar, SIGLAS_DERIV }  from './ui.js';
@@ -284,7 +284,7 @@ function _buscarVinculo(inputId, resultId, hiddenId) {
 function _addDerivRow(areaId = '', fecha = '') {
   derivCounter++;
   const id = `drv-${derivCounter}`;
-  const areas = _areas.filter(a => SIGLAS_DERIV.includes(a.sigla));
+  const areas = getAreas().filter(a => SIGLAS_DERIV.includes(a.sigla));
   let opts = `<option value="">— Área —</option>`;
   areas.forEach(a =>
     opts += `<option value="${a.id}" ${String(a.id)===String(areaId)?'selected':''}>[${esc(a.sigla)}] ${esc(a.nombre)}</option>`
@@ -426,7 +426,7 @@ export async function guardarExpediente() {
     // Derivación inicial
     if (!archivado) {
       if (tipoD === 'responsable' && respId) {
-        const rn = _responsables.find(r => r.id == respId)?.nombre || '';
+        const rn = getResponsables().find(r => r.id == respId)?.nombre || '';
         await runAsync(`INSERT INTO movimientos(expediente_id,tipo,fecha,responsable,observaciones,usuario)
              VALUES(?,?,?,?,?,?)`,
           [newId,'REVISION',fechaResp, rn+(respOtros?` (${respOtros})`:``), `Entregado a: ${rn}`, getCU().username]);

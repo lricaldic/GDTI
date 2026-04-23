@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════
 // movimientos.js — Registro de movimientos
 // ═══════════════════════════════════════════
-import { q, q1, run, runAsync, _areas, _responsables, reloadCache } from './db.js';
+import { q, q1, run, runAsync, getAreas, getResponsables, reloadCache } from './db.js';
 import { el, v, sv, showB, esc, today,
          fillAreaSelect, fillResp, onRespChange,
          abrir, cerrar, showToast, SIGLAS_DERIV }             from './ui.js';
@@ -278,7 +278,7 @@ let emisDerivCounter = 0;
 function _addEmisDerivRow(areaId='', fecha='') {
   emisDerivCounter++;
   const id = `edrv-${emisDerivCounter}`;
-  const areas = _areas.filter(a => SIGLAS_DERIV.includes(a.sigla));
+  const areas = getAreas().filter(a => SIGLAS_DERIV.includes(a.sigla));
   let opts = `<option value="">— Área —</option>`;
   areas.forEach(a => opts += `<option value="${a.id}" ${String(a.id)===String(areaId)?'selected':''}>[${esc(a.sigla)}] ${esc(a.nombre)}</option>`);
   opts += `<option value="OTRO">OTRO (especificar)</option>`;
@@ -347,7 +347,7 @@ function _buscarVinculoMov() {
 function _addRecibDerivRow(areaId='',fecha='') {
   recibDerivCounter++;
   const id = `rdrv-${recibDerivCounter}`;
-  const areas = _areas.filter(a => SIGLAS_DERIV.includes(a.sigla));
+  const areas = getAreas().filter(a => SIGLAS_DERIV.includes(a.sigla));
   let opts = `<option value="">— Área —</option>`;
   areas.forEach(a =>
     opts += `<option value="${a.id}" ${String(a.id)===String(areaId)?'selected':''}>[${esc(a.sigla)}] ${esc(a.nombre)}</option>`
@@ -457,7 +457,7 @@ export async function guardarMovimiento() {
       if (!ok) { alert('Error al guardar. Intenta de nuevo.'); return; }
 
       if (tipoD === 'responsable' && respId) {
-        const rn = _responsables.find(r => r.id == respId)?.nombre || '';
+        const rn = getResponsables().find(r => r.id == respId)?.nombre || '';
         await runAsync(
           `INSERT INTO movimientos(expediente_id,tipo,fecha,responsable,observaciones,usuario) VALUES(?,?,?,?,?,?)`,
           [expId,'REVISION',fechaDeriv, rn+(respOtros?` (${respOtros})`:''),`Entregado a: ${rn}`,getCU().username]);

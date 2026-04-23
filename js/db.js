@@ -1,20 +1,23 @@
 // ═══════════════════════════════════════════
-// db.js — Supabase con interfaz síncrona
-//
-// ESTRATEGIA: cache local en memoria.
-// - q/q1/run operan sobre un cache JSON en memoria.
-// - El cache se sincroniza con Supabase en segundo plano.
-// - Así el resto de módulos NO necesita await.
+// db.js — Supabase + cache en memoria
+// ESTRATEGIA CORREGIDA:
+// - runAsync siempre recarga la tabla afectada tras insertar/actualizar
+// - reloadCache recarga TODO desde Supabase
+// - q/q1 leen del cache actualizado
 // ═══════════════════════════════════════════
 
 const SUPA_URL = 'https://zbvrkvxxkmmvcehspffp.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpidnJrdnh4a21tdmNlaHNwZmZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1NDk1MDcsImV4cCI6MjA5MDEyNTUwN30.pziT8afUSawL4wE1kqyqlbFoUIvcUEVhjLiXhXFJUDk';
 
-let _sb   = null;
+let _sb = null;
 let _lastInsertId = null;
+let _connStatus = false; // estado de conexión
 
-// ─── Cache en memoria por tabla ───────────
-const _cache = {
+// ─── Cache central ────────────────────────
+// Un solo objeto mutable — todos los módulos
+// leen del mismo objeto, así los cambios se
+// propagan sin necesidad de re-importar.
+export const _cache = {
   usuarios:     [],
   responsables: [],
   areas:        [],
@@ -24,9 +27,18 @@ const _cache = {
   auditoria:    [],
 };
 
-// ─── Catálogos (acceso rápido) ────────────
-export let _areas        = [];
-export let _responsables = [];
+// Accesos rápidos a catálogos — GETTERS para
+// siempre leer del cache actualizado
+export function getAreas()        { return _cache.areas.filter(a => a.activa !== false); }
+export function getResponsables() { return _cache.responsables.filter(r => r.activo !== false); }
+export function getSB()           { return _sb; }
+export function isConnected()     { return _connStatus; }
+
+// Compatibilidad con módulos que usan _areas / _responsables directamente
+// Son getters dinámicos, no snapshots
+Object.defineProperty(exports || {}, '_areas',        { get: getAreas });
+Object.defineProperty(exports || {}, '_responsables', { get: getResponsables });
+// En ES modules usamos el patrón de función en su lugar (arriba)
 
 // ═══════════════════════════════════════════
 // INIT
@@ -39,266 +51,205 @@ export async function initDB() {
     auth: { persistSession: false }
   });
 
-  // Probar conexión
   const { error } = await _sb.from('usuarios').select('id').limit(1);
-  if (error) throw new Error(`Sin conexión a la base de datos: ${error.message}`);
+  if (error) throw new Error(`Sin conexión: ${error.message}`);
 
-  // Cargar todas las tablas al cache
-  await _loadAllCache();
-  _updateExports();
+  _connStatus = true;
+  await reloadCache();
 }
 
-export function saveDB() {} // No-op — Supabase persiste automáticamente
+export function saveDB() {} // no-op
 
 // ═══════════════════════════════════════════
-// CARGA DE CACHE
+// CACHE
 // ═══════════════════════════════════════════
-async function _loadAllCache() {
+export async function reloadCache() {
   const tablas = ['usuarios','responsables','areas','expedientes','movimientos','vinculos','auditoria'];
-  await Promise.all(tablas.map(async tabla => {
-    const { data, error } = await _sb.from(tabla).select('*').order('id');
-    if (!error && data) _cache[tabla] = data;
-  }));
+  await Promise.all(tablas.map(_loadTable));
+}
+
+export async function reloadTable(tabla) {
+  await _loadTable(tabla);
 }
 
 async function _loadTable(tabla) {
-  const { data, error } = await _sb.from(tabla).select('*').order('id');
-  if (!error && data) _cache[tabla] = data;
-}
-
-function _updateExports() {
-  _areas        = _cache.areas.filter(a => a.activa);
-  _responsables = _cache.responsables.filter(r => r.activo);
-}
-
-export async function reloadCache() {
-  await _loadAllCache();
-  _updateExports();
+  try {
+    const { data, error } = await _sb.from(tabla).select('*').order('id');
+    if (!error && data) _cache[tabla] = data;
+  } catch(e) { console.error('[DB _loadTable]', tabla, e.message); }
 }
 
 // ═══════════════════════════════════════════
-// QUERY HELPERS — interfaz síncrona sobre cache
+// QUERY — lee del cache
 // ═══════════════════════════════════════════
-
-/**
- * q() — filtra el cache en memoria con una función JS.
- * Para queries simples usa _qCache().
- * Para queries complejas con JOIN usa _qSupabase() (async).
- *
- * Dado que la mayoría de módulos hacen queries simples,
- * usamos el cache. Los JOINs complejos se hacen via
- * funciones específicas en cada módulo usando getSB().
- */
 export function q(sql, params = []) {
-  // Detectar tabla principal del SQL
   const tabla = _detectTable(sql);
-  if (!tabla) return [];
-  const rows = _cache[tabla] || [];
-
-  // Para queries simples sin JOIN retornar directo
-  if (!sql.toLowerCase().includes('join')) {
-    return _filterRows(rows, sql, params);
+  if (!tabla || !_cache[tabla]) return [];
+  if (sql.toLowerCase().includes('join')) {
+    console.warn('[DB] q() no soporta JOINs, usa el cache directamente');
+    return [];
   }
-
-  // Para JOINs: retornar vacío y forzar uso de getSB() directamente
-  // Los módulos que necesiten JOINs deben usar qAsync()
-  console.warn('[DB] JOIN detectado en q() síncrono — usa qAsync():', sql.substring(0,60));
-  return [];
+  return _filter(_cache[tabla], sql, params);
 }
 
 export function q1(sql, params = []) {
-  return q(sql, params)[0] || null;
+  return q(sql, params)[0] ?? null;
 }
 
-/**
- * qAsync() — para queries con JOINs complejos.
- * Retorna Promise. Usado en buscar.js y verDetalle.
- */
-export async function qAsync(sql, params = []) {
-  try {
-    const { data, error } = await _sb.rpc('exec_sql', {
-      sql_query: _interpolate(sql, params)
-    });
-    if (error) { console.error('[DB qAsync]', error.message); return []; }
-    return data || [];
-  } catch(e) { console.error('[DB qAsync]', e.message); return []; }
-}
-
-export async function q1Async(sql, params = []) {
-  const rows = await qAsync(sql, params);
-  return rows[0] || null;
-}
-
-/**
- * run() — fire and forget. Para operaciones no críticas.
- */
+// ═══════════════════════════════════════════
+// RUN — escribe en Supabase y actualiza cache
+// ═══════════════════════════════════════════
 export function run(sql, params = []) {
-  const tabla = _detectTable(sql);
-  _runAsync(sql, params, tabla);
+  // fire-and-forget para operaciones no críticas
+  runAsync(sql, params).catch(e => console.error('[DB run]', e.message));
   return true;
 }
 
-/**
- * runAsync() — espera confirmación de Supabase.
- * Usar en guardarExpediente, guardarMovimiento y otros guardados críticos.
- */
 export async function runAsync(sql, params = []) {
-  const tabla = _detectTable(sql);
-  return await _runAsync(sql, params, tabla);
-}
+  const sqlN   = sql.replace(/\s+/g, ' ').trim();
+  const tabla  = _detectTable(sqlN);
+  const opType = sqlN.slice(0,6).toUpperCase();
 
-async function _runAsync(sql, params, tabla) {
   try {
-    const isInsert = sql.trim().toUpperCase().startsWith('INSERT');
-    const isUpdate = sql.trim().toUpperCase().startsWith('UPDATE');
-
-    if (isInsert && tabla) {
-      const obj = _parseInsert(sql, params);
-      if (obj) {
-        const { data, error } = await _sb.from(tabla).insert(obj).select().single();
-        if (error) { console.error('[DB insert]', error.message); return false; }
-        _lastInsertId = data.id;
-        _cache[tabla] = [...(_cache[tabla]||[]), data];
-        _updateExports();
-        return true;
-      }
+    if (opType === 'INSERT' && tabla) {
+      const obj = _parseInsert(sqlN, params);
+      if (!obj) return false;
+      const { data, error } = await _sb.from(tabla).insert(obj).select().single();
+      if (error) { console.error('[DB INSERT]', error.message, obj); return false; }
+      _lastInsertId = data.id;
+      // Actualizar cache inmediatamente con el registro devuelto
+      _cache[tabla] = [..._cache[tabla], data];
+      return true;
     }
 
-    if (isUpdate && tabla) {
-      const { set, where } = _parseUpdate(sql, params);
-      if (set && where) {
-        const { error } = await _sb.from(tabla).update(set).match(where);
-        if (error) { console.error('[DB update]', error.message); return false; }
-        await _loadTable(tabla);
-        _updateExports();
-        return true;
-      }
+    if (opType === 'UPDATE' && tabla) {
+      const parsed = _parseUpdate(sqlN, params);
+      if (!parsed.set) return false;
+      const { error } = await _sb.from(tabla).update(parsed.set).match(parsed.where);
+      if (error) { console.error('[DB UPDATE]', error.message); return false; }
+      // Recargar tabla para reflejar cambio
+      await _loadTable(tabla);
+      return true;
     }
 
-    // Fallback: exec_sql para casos complejos
-    const { data, error } = await _sb.rpc('exec_sql', { sql_query: _interpolate(sql, params) });
-    if (error) { console.error('[DB run fallback]', error.message); return false; }
-    if (tabla) { await _loadTable(tabla); _updateExports(); }
-    if (data?.[0]?.id) _lastInsertId = data[0].id;
-    return true;
+    if (opType === 'DELETE' && tabla) {
+      // DELETE manejado directamente via getSB() en los módulos
+      await _loadTable(tabla);
+      return true;
+    }
 
-  } catch(e) { console.error('[DB _runAsync]', e.message); return false; }
+    return false;
+  } catch(e) {
+    console.error('[DB runAsync]', e.message);
+    return false;
+  }
 }
 
 export function lastId() { return _lastInsertId; }
-export function getSB()  { return _sb; }
 
 // ═══════════════════════════════════════════
-// HELPERS INTERNOS
+// FILTRO EN MEMORIA
 // ═══════════════════════════════════════════
-
-function _detectTable(sql) {
-  const m = sql.match(/(?:FROM|INTO|UPDATE)\s+(\w+)/i);
-  return m ? m[1].toLowerCase() : null;
-}
-
-function _filterRows(rows, sql, params) {
-  // Para ORDER BY, LIMIT simples aplicar en memoria
+function _filter(rows, sql, params) {
   let result = [...rows];
-  const sqlUp = sql.toUpperCase();
+  const sqlU = sql.toUpperCase().replace(/\s+/g, ' ');
 
   // WHERE id = ?
-  const whereId = sql.match(/WHERE\s+\w+\.?id\s*=\s*\?/i);
-  if (whereId && params.length) {
-    const idVal = params[params.length - 1]; // último param suele ser el id en WHERE
-    result = result.filter(r => String(r.id) === String(idVal));
-  }
-
-  // WHERE username = ?
-  const whereUser = sql.match(/WHERE\s+username\s*=\s*\?/i);
-  if (whereUser && params[0]) {
-    result = result.filter(r => r.username === params[0]);
-  }
-
-  // WHERE activo/activa = 1/true — Supabase retorna booleanos
-  const sqlUp2 = sql.toUpperCase().replace(/\s+/g,'');
-  if (sqlUp2.includes('ACTIVO=1') || sqlUp2.includes('ACTIVO=TRUE')) {
-    result = result.filter(r => r.activo === true || r.activo === 1);
-  }
-  if (sqlUp2.includes('ACTIVA=1') || sqlUp2.includes('ACTIVA=TRUE')) {
-    result = result.filter(r => r.activa === true || r.activa === 1);
+  if (/WHERE\s+\w*\.?ID\s*=\s*\?/i.test(sql) && params.length) {
+    const val = params.find(p => p !== null && p !== undefined);
+    if (val !== undefined) result = result.filter(r => String(r.id) === String(val));
   }
 
   // WHERE expediente_id = ?
-  const whereExpId = sql.match(/WHERE\s+\w+\.?expediente_id\s*=\s*\?/i);
-  if (whereExpId && params[0]) {
+  if (/WHERE\s+\w*\.?EXPEDIENTE_ID\s*=\s*\?/i.test(sql) && params[0] != null) {
     result = result.filter(r => String(r.expediente_id) === String(params[0]));
   }
 
-  // ORDER BY ... DESC / ASC
-  const orderMatch = sql.match(/ORDER\s+BY\s+(\w+)\s*(DESC|ASC)?/i);
-  if (orderMatch) {
-    const col = orderMatch[1].toLowerCase();
-    const desc = (orderMatch[2]||'').toUpperCase() === 'DESC';
+  // WHERE exp_origen = ? OR exp_destino = ?
+  if (/EXP_ORIGEN\s*=\s*\?/i.test(sql) && params[0] != null) {
+    result = result.filter(r =>
+      String(r.exp_origen) === String(params[0]) ||
+      String(r.exp_destino) === String(params[1] ?? params[0])
+    );
+  }
+
+  // WHERE username = ?
+  if (/WHERE\s+USERNAME\s*=\s*\?/i.test(sql) && params[0] != null) {
+    result = result.filter(r => r.username === params[0]);
+  }
+
+  // WHERE activo = 1 / activa = 1
+  if (/ACTIVO\s*=\s*1/i.test(sql) || /ACTIVO\s*=\s*TRUE/i.test(sql)) {
+    result = result.filter(r => r.activo === true || r.activo === 1);
+  }
+  if (/ACTIVA\s*=\s*1/i.test(sql) || /ACTIVA\s*=\s*TRUE/i.test(sql)) {
+    result = result.filter(r => r.activa === true || r.activa === 1);
+  }
+
+  // ORDER BY col DESC/ASC
+  const ord = sql.match(/ORDER\s+BY\s+(\w+)(?:\s+(DESC|ASC))?/i);
+  if (ord) {
+    const col  = ord[1].toLowerCase();
+    const desc = (ord[2]||'').toUpperCase() === 'DESC';
     result.sort((a, b) => {
-      if (a[col] < b[col]) return desc ? 1 : -1;
-      if (a[col] > b[col]) return desc ? -1 : 1;
+      const va = a[col] ?? '', vb = b[col] ?? '';
+      if (va < vb) return desc ? 1 : -1;
+      if (va > vb) return desc ? -1 : 1;
       return 0;
     });
   }
 
-  // LIMIT
-  const limitMatch = sql.match(/LIMIT\s+(\d+)/i);
-  if (limitMatch) result = result.slice(0, parseInt(limitMatch[1]));
+  // LIMIT n
+  const lim = sql.match(/LIMIT\s+(\d+)/i);
+  if (lim) result = result.slice(0, parseInt(lim[1]));
 
   return result;
 }
 
+// ═══════════════════════════════════════════
+// PARSEO DE SQL
+// ═══════════════════════════════════════════
+function _detectTable(sql) {
+  const m = sql.replace(/\s+/g,' ').match(/(?:FROM|INTO|UPDATE|DELETE\s+FROM)\s+(\w+)/i);
+  return m ? m[1].toLowerCase() : null;
+}
+
 function _parseInsert(sql, params) {
-  // Normalizar espacios y saltos de línea
-  const normalized = sql.replace(/\s+/g, ' ').trim();
-  const m = normalized.match(/INSERT\s+INTO\s+(\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)/i);
+  const m = sql.match(/INSERT\s+INTO\s+\w+\s*\(([^)]+)\)\s*VALUES\s*\([^)]+\)/i);
   if (!m) return null;
-  const cols = m[2].split(',').map(c => c.trim());
+  const cols = m[1].split(',').map(c => c.trim());
   const obj  = {};
   cols.forEach((col, i) => {
-    const val = params[i];
-    obj[col] = (val === null || val === undefined) ? null : val;
+    obj[col] = params[i] === undefined ? null : (params[i] === '' ? null : params[i]);
   });
   return obj;
 }
 
 function _parseUpdate(sql, params) {
-  const normalized = sql.replace(/\s+/g, ' ').trim();
-  const setMatch   = normalized.match(/SET\s+(.+?)\s+WHERE/i);
-  const whereMatch = normalized.match(/WHERE\s+(\w+)\s*=\s*\?/i);
-  if (!setMatch || !whereMatch) return { set: null, where: null };
-
-  const setCols  = setMatch[1].split(',').map(s => s.trim().split(/\s*=\s*/)[0].trim());
-  const whereCol = whereMatch[1].trim();
-  const set      = {};
-  setCols.forEach((col, i) => { set[col] = params[i] ?? null; });
-  const where    = { [whereCol]: params[setCols.length] };
-  return { set, where };
+  const setM   = sql.match(/SET\s+(.+?)\s+WHERE/i);
+  const whereM = sql.match(/WHERE\s+(\w+)\s*=\s*\?/i);
+  if (!setM || !whereM) return { set: null, where: null };
+  const cols = setM[1].split(',').map(s => s.trim().replace(/\s*=\s*\?.*/, '').trim());
+  const set  = {};
+  cols.forEach((col, i) => { set[col] = params[i] ?? null; });
+  return { set, where: { [whereM[1]]: params[cols.length] } };
 }
 
-function _interpolate(sql, params) {
-  if (!params?.length) return sql;
-  let i = 0;
-  return sql.replace(/\?/g, () => {
-    const val = params[i++];
-    if (val === null || val === undefined) return 'NULL';
-    if (typeof val === 'number') return val;
-    if (typeof val === 'boolean') return val ? 'true' : 'false';
-    return `'${String(val).replace(/'/g, "''")}'`;
-  });
-}
-
-// ─── Realtime ────────────────────────────
+// ═══════════════════════════════════════════
+// REALTIME — sincronización automática
+// ═══════════════════════════════════════════
 export function suscribirRealtime(onCambio) {
-  _sb.channel('gdti-cambios')
-    .on('postgres_changes', { event:'*', schema:'public', table:'expedientes' }, async () => {
+  if (!_sb) return;
+  _sb.channel('gdti-rt')
+    .on('postgres_changes',{ event:'*', schema:'public', table:'expedientes' }, async () => {
       await _loadTable('expedientes');
       onCambio?.('expedientes');
     })
-    .on('postgres_changes', { event:'*', schema:'public', table:'movimientos' }, async () => {
+    .on('postgres_changes',{ event:'*', schema:'public', table:'movimientos' }, async () => {
       await _loadTable('movimientos');
       onCambio?.('movimientos');
     })
-    .subscribe();
+    .subscribe(status => {
+      _connStatus = status === 'SUBSCRIBED';
+    });
 }
