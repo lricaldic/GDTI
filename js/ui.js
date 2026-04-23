@@ -134,7 +134,7 @@ window.addEventListener('resize', () => {
 });
 
 // ─── Fill selects con catálogos ───
-import { _areas, getResponsables() } from './db.js';
+import { getAreas, getResponsables } from './db.js';
 
 export function fillResp(selId, addEmpty = true) {
   const sel = el(selId);

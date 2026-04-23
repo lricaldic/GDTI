@@ -34,10 +34,6 @@ export function getResponsables() { return _cache.responsables.filter(r => r.act
 export function getSB()           { return _sb; }
 export function isConnected()     { return _connStatus; }
 
-// Compatibilidad con módulos que usan _areas / _responsables directamente
-// Son getters dinámicos, no snapshots
-Object.defineProperty(exports || {}, '_areas',        { get: getAreas });
-Object.defineProperty(exports || {}, '_responsables', { get: getResponsables });
 // En ES modules usamos el patrón de función en su lugar (arriba)
 
 // ═══════════════════════════════════════════
