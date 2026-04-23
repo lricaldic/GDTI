@@ -70,6 +70,9 @@ input, select, textarea { font-family: inherit; }
 .topbar-user .urole { font-size:.68rem; opacity:.6; text-transform:uppercase; letter-spacing:.06em; }
 .btn-out { background:rgba(255,255,255,.12); color:#fff; border:none; padding:5px 12px; border-radius:var(--r); font-size:.78rem; transition:background .2s; }
 .btn-out:hover { background:rgba(255,255,255,.22); }
+/* Indicador de conexión */
+.conn-dot { width:8px; height:8px; border-radius:50%; background:#4ade80; display:inline-block; margin-right:5px; flex-shrink:0; transition:background .3s; }
+.conn-dot.off { background:#f87171; }
 
 /* ── SIDEBAR ── */
 .layout { display:flex; flex:1; position:relative; }
